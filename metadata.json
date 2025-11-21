@@ -1,0 +1,5 @@
+{
+  "name": "Google Foods",
+  "description": "Intelligent food recommendation engine powered by Gemini with Google Search Grounding.",
+  "requestFramePermissions": []
+}
