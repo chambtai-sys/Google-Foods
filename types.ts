@@ -1,3 +1,4 @@
+
 export interface GroundingSource {
   title: string;
   uri: string;
@@ -19,7 +20,14 @@ export interface Recipe {
   sources: GroundingSource[];
 }
 
-export type AppMode = 'normal' | 'fast' | 'thinking' | 'video';
+export type AppMode = 'normal' | 'fast' | 'thinking' | 'video' | 'image';
+
+export interface Attachment {
+  file: File;
+  previewUrl: string;
+  mimeType: string;
+  base64Data: string;
+}
 
 export interface SearchState {
   isLoading: boolean;
@@ -28,4 +36,5 @@ export interface SearchState {
   rawText?: string;
   allSources?: GroundingSource[];
   videoUrl?: string;
+  imageUrl?: string;
 }

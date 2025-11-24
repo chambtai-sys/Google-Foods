@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FoodRecommendation } from '../types';
-import { ExternalLink, Utensils, BookOpen } from 'lucide-react';
+import { ExternalLink, Utensils, BookOpen, Share2, Check } from 'lucide-react';
 
 interface ResultCardProps {
   item: FoodRecommendation;
@@ -9,9 +9,33 @@ interface ResultCardProps {
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({ item, index, onViewRecipe }) => {
+  const [justShared, setJustShared] = useState(false);
+
   // Deterministic generic food image placeholder based on index to vary visuals slightly
   const placeholderId = 100 + index; 
   const imageUrl = `https://picsum.photos/id/${placeholderId}/400/300`;
+
+  const handleShare = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    const shareData = {
+      title: `Recipe: ${item.title}`,
+      text: `Check out this delicious dish I found on Google Foods: ${item.title}`,
+      url: `https://www.google.com/search?q=${encodeURIComponent(item.title + " recipe")}`
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+        setJustShared(true);
+        setTimeout(() => setJustShared(false), 2000);
+      }
+    } catch (err) {
+      console.error('Error sharing:', err);
+    }
+  };
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full">
@@ -42,7 +66,15 @@ export const ResultCard: React.FC<ResultCardProps> = ({ item, index, onViewRecip
              <BookOpen className="w-4 h-4" />
              View Recipe
            </button>
-           {/* Optional: External generic search fallback */}
+           
+           <button 
+             onClick={handleShare}
+             className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors relative"
+             title="Share dish"
+           >
+             {justShared ? <Check className="w-4 h-4 text-green-500" /> : <Share2 className="w-4 h-4" />}
+           </button>
+
            <a 
              href={`https://www.google.com/search?q=${encodeURIComponent(item.title + " recipe")}`} 
              target="_blank" 

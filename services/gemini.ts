@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Tool } from "@google/genai";
-import { GroundingSource, FoodRecommendation, Recipe, AppMode } from "../types";
+import { GroundingSource, FoodRecommendation, Recipe, AppMode, Attachment } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -31,32 +32,83 @@ const getModelConfig = (mode: AppMode) => {
   return { model, config };
 };
 
-export const getFoodRecommendations = async (query: string, mode: AppMode = 'normal'): Promise<{ recommendations: FoodRecommendation[], rawText: string, allSources: GroundingSource[] }> => {
+export const getFoodRecommendations = async (
+  query: string, 
+  mode: AppMode = 'normal',
+  attachment?: Attachment
+): Promise<{ recommendations: FoodRecommendation[], rawText: string, allSources: GroundingSource[] }> => {
   
   const { model, config } = getModelConfig(mode);
 
-  const prompt = `
-    You are Google Foods, a helpful food recommendation assistant. 
-    The user is asking: "${query}".
-    
-    Please suggest exactly 3 distinct food dishes or meals that match this request.
-    For each recommendation, verify it exists using Google Search and find a relevant recipe or restaurant context.
-
+  let systemInstruction = `
+    You are Google Foods, a helpful food recommendation assistant.
     Format your response strictly using the following marker for each item so I can parse it:
     
     ### ITEM_START
-    Name: [Dish Name]
-    Description: [A mouth-watering description, followed by a brief reason why it fits the query]
+    Name: [Dish Name or Analysis Topic]
+    Description: [Description or Analysis Result]
     ### ITEM_END
 
     Do not use markdown lists or bullets inside the Name field. Keep descriptions concise (under 50 words).
   `;
 
+  // Adjust prompt based on attachment type
+  let promptText = `The user is asking: "${query}". Please suggest exactly 3 distinct food dishes or meals that match this request.`;
+  
+  const contents: any[] = [];
+
+  if (attachment) {
+    // Add the file to the request
+    contents.push({
+      inlineData: {
+        mimeType: attachment.mimeType,
+        data: attachment.base64Data
+      }
+    });
+
+    if (attachment.mimeType.startsWith('image/')) {
+      promptText = `
+        Analyze the attached image. 
+        If it shows a dish, identify it and suggest similar foods (Name: [Dish Name], Description: [Identification & why it looks good]).
+        If it shows ingredients, suggest 3 recipes using them.
+        User query: "${query}"
+      `;
+    } else if (attachment.mimeType.startsWith('text/') || attachment.mimeType === 'text/plain') {
+      promptText = `
+        Analyze the attached text content. 
+        Summarize the food-related concepts, menu items, or recipes found within.
+        User query: "${query}"
+      `;
+    } else if (attachment.mimeType.startsWith('audio/')) {
+      promptText = `
+        Listen to the attached audio. 
+        If it is a podcast or conversation, improve the flow, summarize recipes mentioned, or identify the food topics discussed.
+        Format the output as 3 key takeaways or recipes mentioned.
+        User query: "${query}"
+      `;
+    } else if (attachment.mimeType.startsWith('video/')) {
+      promptText = `
+        Watch the attached video. 
+        Analyze the cooking techniques, identify the dish being prepared, or summarize the food content.
+        User query: "${query}"
+      `;
+    }
+  } else {
+    // No attachment, standard text query
+    promptText += ` Verify recommendations exist using Google Search.`;
+  }
+
+  // Add the text prompt part
+  contents.push({ text: promptText });
+
   try {
     const response = await ai.models.generateContent({
       model,
-      contents: prompt,
-      config
+      contents, // Pass array of parts
+      config: {
+        ...config,
+        systemInstruction
+      }
     });
 
     const text = response.text || "";
@@ -99,8 +151,8 @@ export const getFoodRecommendations = async (query: string, mode: AppMode = 'nor
 };
 
 export const getDishRecipe = async (dishName: string, mode: AppMode = 'normal'): Promise<Recipe> => {
-  // We map 'video' mode to 'normal' for recipe retrieval if it happens to be called
-  const effectiveMode = mode === 'video' ? 'normal' : mode;
+  // We map 'video' and 'image' mode to 'normal' for recipe retrieval if it happens to be called
+  const effectiveMode = (mode === 'video' || mode === 'image') ? 'normal' : mode;
   const { model, config } = getModelConfig(effectiveMode);
 
   const prompt = `
@@ -205,6 +257,46 @@ export const generateFoodVideo = async (prompt: string): Promise<string> => {
 
   } catch (error) {
     console.error("Gemini Veo API Error:", error);
+    throw error;
+  }
+};
+
+export const generateFoodImage = async (prompt: string, size: '1K' | '2K' | '4K'): Promise<string> => {
+  // Check for API key selection (mandatory for gemini-3-pro-image-preview)
+  if (typeof window !== 'undefined' && (window as any).aistudio) {
+    const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+    if (!hasKey) {
+      await (window as any).aistudio.openSelectKey();
+    }
+  }
+
+  const imageAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  try {
+    const response = await imageAi.models.generateContent({
+      model: 'gemini-3-pro-image-preview',
+      contents: {
+        parts: [{ text: `A professional, high-quality food photography shot of ${prompt}. Studio lighting, appetizing, delicious details.` }]
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1",
+          imageSize: size
+        }
+      }
+    });
+
+    // Iterate through parts to find the image
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    
+    throw new Error("No image data returned from API.");
+
+  } catch (error) {
+    console.error("Gemini Image API Error:", error);
     throw error;
   }
 };

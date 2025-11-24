@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { FoodRecommendation, Recipe, AppMode } from '../types';
 import { getDishRecipe } from '../services/gemini';
-import { X, Clock, Users, ChefHat, Loader2, MonitorPlay, ChevronLeft, ChevronRight, CheckCircle2, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Clock, Users, ChefHat, Loader2, MonitorPlay, ChevronLeft, ChevronRight, CheckCircle2, Maximize2, Minimize2, Share2, Check } from 'lucide-react';
 import { SourceList } from './SourceList';
 
 interface RecipeModalProps {
@@ -14,6 +14,7 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
   const [recipe, setRecipe] = useState<Recipe | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [justShared, setJustShared] = useState(false);
   
   // Cook Mode State
   const [isCookMode, setIsCookMode] = useState(false);
@@ -95,6 +96,28 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
   const prevStep = () => {
     if (currentStep > 0) {
       setCurrentStep(prev => prev - 1);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!item) return;
+    
+    const shareData = {
+      title: `Recipe: ${item.title}`,
+      text: `Check out this delicious dish I found on Google Foods: ${item.title}`,
+      url: `https://www.google.com/search?q=${encodeURIComponent(item.title + " recipe")}`
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.text}\n${shareData.url}`);
+        setJustShared(true);
+        setTimeout(() => setJustShared(false), 2000);
+      }
+    } catch (err) {
+      console.error('Error sharing:', err);
     }
   };
 
@@ -190,12 +213,21 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
             <h2 className="text-2xl md:text-3xl font-google font-bold text-gray-800">{item.title}</h2>
             <p className="text-gray-500 text-sm mt-1">Detailed preparation guide</p>
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 bg-white hover:bg-gray-100 rounded-full transition-colors text-gray-500 shadow-sm border border-gray-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleShare}
+              className="p-2 bg-white hover:bg-gray-100 rounded-full transition-colors text-gray-500 shadow-sm border border-gray-200 flex items-center justify-center"
+              title="Share Recipe"
+            >
+              {justShared ? <Check className="w-5 h-5 text-green-500" /> : <Share2 className="w-5 h-5" />}
+            </button>
+            <button 
+              onClick={onClose}
+              className="p-2 bg-white hover:bg-gray-100 rounded-full transition-colors text-gray-500 shadow-sm border border-gray-200"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

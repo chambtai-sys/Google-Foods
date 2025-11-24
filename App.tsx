@@ -1,12 +1,13 @@
+
 import React, { useState } from 'react';
 import { GoogleFoodsLogo } from './components/GoogleFoodsLogo';
 import { SearchBar } from './components/SearchBar';
 import { ResultCard } from './components/ResultCard';
 import { SourceList } from './components/SourceList';
 import { RecipeModal } from './components/RecipeModal';
-import { getFoodRecommendations, generateFoodVideo } from './services/gemini';
-import { SearchState, FoodRecommendation, AppMode } from './types';
-import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video } from 'lucide-react';
+import { getFoodRecommendations, generateFoodVideo, generateFoodImage } from './services/gemini';
+import { SearchState, FoodRecommendation, AppMode, Attachment } from './types';
+import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video, Image as ImageIcon, Download } from 'lucide-react';
 
 const SUGGESTED_TAGS = [
   "Healthy Lunch", "Spicy Dinner", "Italian", "Vegan", "Comfort Food", "Sushi", "Late Night Snack"
@@ -18,16 +19,36 @@ export default function App() {
     results: [],
     error: null,
     allSources: [],
-    videoUrl: undefined
+    videoUrl: undefined,
+    imageUrl: undefined
   });
   
   const [selectedDish, setSelectedDish] = useState<FoodRecommendation | null>(null);
   const [mode, setMode] = useState<AppMode>('normal');
+  const [imageSize, setImageSize] = useState<'1K' | '2K' | '4K'>('1K');
 
-  const handleSearch = async (query: string) => {
-    setState(prev => ({ ...prev, isLoading: true, error: null, results: [], allSources: [], videoUrl: undefined }));
+  const handleSearch = async (query: string, attachment?: Attachment) => {
+    setState(prev => ({ 
+      ...prev, 
+      isLoading: true, 
+      error: null, 
+      results: [], 
+      allSources: [], 
+      videoUrl: undefined, 
+      imageUrl: undefined 
+    }));
     
+    // Video Generation Mode (Text only supported currently in this implementation)
     if (mode === 'video') {
+      if (attachment) {
+        setState({
+          isLoading: false,
+          results: [],
+          error: "Video generation from files is not supported yet. Please use text mode or remove the file.",
+          allSources: []
+        });
+        return;
+      }
       try {
         const videoUrl = await generateFoodVideo(query);
         setState({
@@ -47,8 +68,39 @@ export default function App() {
       return;
     }
 
+    // Image Generation Mode (Text only supported currently)
+    if (mode === 'image') {
+      if (attachment) {
+        setState({
+          isLoading: false,
+          results: [],
+          error: "Image generation from files is not supported yet. Please use text mode or remove the file.",
+          allSources: []
+        });
+        return;
+      }
+      try {
+        const imageUrl = await generateFoodImage(query, imageSize);
+        setState({
+          isLoading: false,
+          results: [],
+          error: null,
+          imageUrl
+        });
+      } catch (err) {
+        setState({
+          isLoading: false,
+          results: [],
+          error: "Could not generate image. Please try again later.",
+          allSources: []
+        });
+      }
+      return;
+    }
+
+    // Normal / Fast / Thinking modes (Support Multimodal)
     try {
-      const data = await getFoodRecommendations(query, mode);
+      const data = await getFoodRecommendations(query, mode, attachment);
       setState({
         isLoading: false,
         results: data.recommendations,
@@ -57,6 +109,7 @@ export default function App() {
         error: null
       });
     } catch (err) {
+      console.error(err);
       setState({
         isLoading: false,
         results: [],
@@ -71,7 +124,7 @@ export default function App() {
   };
 
   // Fallback view if parsing fails but we have text (rare edge case with Gemini)
-  const showRawText = state.results.length === 0 && state.rawText && !state.isLoading && !state.videoUrl;
+  const showRawText = state.results.length === 0 && state.rawText && !state.isLoading && !state.videoUrl && !state.imageUrl;
 
   return (
     <div className="min-h-screen bg-white flex flex-col font-sans text-gray-900">
@@ -83,14 +136,14 @@ export default function App() {
       <main className="flex-grow flex flex-col items-center px-4 pb-12 w-full max-w-6xl mx-auto">
         
         {/* Hero / Search Area */}
-        <div className={`transition-all duration-500 ease-in-out w-full flex flex-col items-center ${state.results.length > 0 || state.isLoading || state.videoUrl ? 'mt-4 mb-8' : 'mt-[15vh] mb-12'}`}>
-          <GoogleFoodsLogo large={state.results.length === 0 && !state.isLoading && !state.videoUrl} className="mb-6 md:mb-8" />
+        <div className={`transition-all duration-500 ease-in-out w-full flex flex-col items-center ${state.results.length > 0 || state.isLoading || state.videoUrl || state.imageUrl ? 'mt-4 mb-8' : 'mt-[15vh] mb-12'}`}>
+          <GoogleFoodsLogo large={state.results.length === 0 && !state.isLoading && !state.videoUrl && !state.imageUrl} className="mb-6 md:mb-8" />
           
           <h1 className="text-lg md:text-xl text-gray-600 mb-4 font-google font-normal text-center">
             Hungry? Here is some reccomended foods you may like
           </h1>
 
-          <div className="mb-6 flex flex-wrap justify-center items-center gap-3">
+          <div className="mb-4 flex flex-wrap justify-center items-center gap-3">
              {/* Fast Mode Button */}
              <button
                 onClick={() => setMode(mode === 'fast' ? 'normal' : 'fast')}
@@ -171,11 +224,60 @@ export default function App() {
                   </div>
                 </div>
               </button>
+
+              {/* Image Mode Button */}
+              <button
+                onClick={() => setMode(mode === 'image' ? 'normal' : 'image')}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300
+                  ${mode === 'image'
+                    ? 'bg-emerald-500 text-white shadow-md ring-2 ring-emerald-200'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }
+                `}
+              >
+                <ImageIcon className={`w-4 h-4 ${mode === 'image' ? 'fill-current' : ''}`} />
+                Image
+                
+                <div 
+                  className="group relative ml-1 p-1 rounded-full hover:bg-white/20 transition-colors cursor-help"
+                  onClick={(e) => e.stopPropagation()}
+                  title="Info about Image Mode"
+                >
+                  <Info className="w-3.5 h-3.5" />
+                  <div className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-56 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-50 text-center font-normal leading-relaxed">
+                    Uses <strong>Gemini 3 Pro Image</strong> to generate high-fidelity food photography.
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
+                  </div>
+                </div>
+              </button>
           </div>
+
+          {/* Image Size Selector (Only visible in Image Mode) */}
+          {mode === 'image' && (
+            <div className="mb-4 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300 bg-emerald-50 p-1.5 rounded-full border border-emerald-100">
+               <span className="text-xs font-bold text-emerald-800 px-2">Size:</span>
+               {(['1K', '2K', '4K'] as const).map(size => (
+                 <button
+                   key={size}
+                   onClick={() => setImageSize(size)}
+                   className={`
+                     px-3 py-1 text-xs rounded-full font-medium transition-colors
+                     ${imageSize === size 
+                       ? 'bg-emerald-500 text-white shadow-sm' 
+                       : 'text-emerald-700 hover:bg-emerald-100'
+                     }
+                   `}
+                 >
+                   {size}
+                 </button>
+               ))}
+            </div>
+          )}
 
           <SearchBar onSearch={handleSearch} isLoading={state.isLoading} />
           
-          {!state.results.length && !state.isLoading && !state.videoUrl && (
+          {!state.results.length && !state.isLoading && !state.videoUrl && !state.imageUrl && (
             <div className="mt-8 flex flex-wrap justify-center gap-2 max-w-2xl animate-fade-in">
               {SUGGESTED_TAGS.map(tag => (
                 <button
@@ -197,6 +299,8 @@ export default function App() {
                <BrainCircuit className="w-12 h-12 text-purple-500 mb-4 animate-pulse" />
              ) : mode === 'video' ? (
                <Video className="w-12 h-12 text-pink-500 mb-4 animate-pulse" />
+             ) : mode === 'image' ? (
+               <ImageIcon className="w-12 h-12 text-emerald-500 mb-4 animate-pulse" />
              ) : (
                <ChefHat className="w-12 h-12 text-gray-300 mb-4" />
              )}
@@ -204,10 +308,11 @@ export default function App() {
                 {mode === 'fast' && "Speedy Chef is searching..."}
                 {mode === 'thinking' && "Chef Gemini is deeply analyzing the best culinary matches..."}
                 {mode === 'video' && "Generating your delicious video (this may take a moment)..."}
+                {mode === 'image' && `Generating your ${imageSize} food masterpiece...`}
                 {mode === 'normal' && "Chef Gemini is looking up the best options..."}
              </p>
              <div className="mt-2 text-xs text-gray-400">
-               {mode === 'video' ? "Powered by Veo" : "Powered by Google Search"}
+               {mode === 'video' ? "Powered by Veo" : mode === 'image' ? "Powered by Gemini 3 Pro" : "Powered by Google Search"}
              </div>
           </div>
         )}
@@ -229,7 +334,31 @@ export default function App() {
                    download="food-generation.mp4"
                    className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 font-medium"
                 >
+                  <Download className="w-4 h-4" />
                   Download Video
+                </a>
+             </div>
+          </div>
+        )}
+
+        {/* Image Result */}
+        {!state.isLoading && state.imageUrl && (
+          <div className="w-full max-w-2xl animate-fade-in-up">
+             <div className="bg-gray-100 rounded-2xl shadow-lg overflow-hidden border border-gray-200">
+               <img 
+                 src={state.imageUrl} 
+                 alt="Generated Food" 
+                 className="w-full h-auto object-contain"
+               />
+             </div>
+             <div className="mt-4 text-center">
+                <a 
+                   href={state.imageUrl} 
+                   download={`food-${new Date().getTime()}.png`}
+                   className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full font-medium transition-colors shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  Download Image
                 </a>
              </div>
           </div>
