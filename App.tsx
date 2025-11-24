@@ -7,7 +7,7 @@ import { SourceList } from './components/SourceList';
 import { RecipeModal } from './components/RecipeModal';
 import { getFoodRecommendations, generateFoodVideo, generateFoodImage } from './services/gemini';
 import { SearchState, FoodRecommendation, AppMode, Attachment } from './types';
-import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video, Image as ImageIcon, Download, Github } from 'lucide-react';
+import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video, Image as ImageIcon, Download, Github, Globe, MapPin, Store } from 'lucide-react';
 
 const SUGGESTED_TAGS = [
   "Healthy Lunch", "Spicy Dinner", "Italian", "Vegan", "Comfort Food", "Sushi", "Late Night Snack"
@@ -98,7 +98,7 @@ export default function App() {
       return;
     }
 
-    // Normal / Fast / Thinking modes (Support Multimodal)
+    // Normal / Fast / Thinking / Agents modes (Support Multimodal)
     try {
       const data = await getFoodRecommendations(query, mode, attachment);
       setState({
@@ -144,14 +144,15 @@ export default function App() {
       <main className="flex-grow flex flex-col items-center px-4 pb-12 w-full max-w-6xl mx-auto">
         
         {/* Hero / Search Area */}
-        <div className={`transition-all duration-500 ease-in-out w-full flex flex-col items-center ${state.results.length > 0 || state.isLoading || state.videoUrl || state.imageUrl ? 'mt-4 mb-8' : 'mt-[15vh] mb-12'}`}>
+        <div className={`transition-all duration-500 ease-in-out w-full flex flex-col items-center ${state.results.length > 0 || state.isLoading || state.videoUrl || state.imageUrl ? 'mt-4 mb-8' : 'mt-[10vh] mb-12'}`}>
           <GoogleFoodsLogo large={state.results.length === 0 && !state.isLoading && !state.videoUrl && !state.imageUrl} className="mb-6 md:mb-8" />
           
           <h1 className="text-lg md:text-xl text-gray-600 mb-4 font-google font-normal text-center">
             Hungry? Here is some reccomended foods you may like
           </h1>
 
-          <div className="mb-4 flex flex-wrap justify-center items-center gap-3">
+          {/* Mode Selectors */}
+          <div className="mb-3 flex flex-wrap justify-center items-center gap-3">
              {/* Fast Mode Button */}
              <button
                 onClick={() => setMode(mode === 'fast' ? 'normal' : 'fast')}
@@ -261,6 +262,41 @@ export default function App() {
               </button>
           </div>
 
+          {/* Agents Buttons */}
+          <div className="mb-4 flex flex-wrap justify-center items-center gap-3">
+             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mr-1">Agents:</div>
+             
+             {/* Google Search Agent */}
+             <button
+                onClick={() => setMode(mode === 'search_agent' ? 'normal' : 'search_agent')}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300
+                  ${mode === 'search_agent'
+                    ? 'bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600'
+                  }
+                `}
+              >
+                <Globe className="w-4 h-4" />
+                Search Agent
+             </button>
+
+             {/* Restaurant Finder Agent */}
+             <button
+                onClick={() => setMode(mode === 'restaurants' ? 'normal' : 'restaurants')}
+                className={`
+                  flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all duration-300
+                  ${mode === 'restaurants'
+                    ? 'bg-red-500 text-white shadow-md ring-2 ring-red-200'
+                    : 'bg-white border border-gray-200 text-gray-600 hover:bg-red-50 hover:border-red-200 hover:text-red-600'
+                  }
+                `}
+              >
+                <Store className="w-4 h-4" />
+                Restaurant Finder
+             </button>
+          </div>
+
           {/* Image Size Selector (Only visible in Image Mode) */}
           {mode === 'image' && (
             <div className="mb-4 flex items-center gap-2 animate-in fade-in slide-in-from-top-2 duration-300 bg-emerald-50 p-1.5 rounded-full border border-emerald-100">
@@ -283,7 +319,10 @@ export default function App() {
             </div>
           )}
 
-          <SearchBar onSearch={handleSearch} isLoading={state.isLoading} />
+          <SearchBar 
+            onSearch={handleSearch} 
+            isLoading={state.isLoading} 
+          />
           
           {!state.results.length && !state.isLoading && !state.videoUrl && !state.imageUrl && (
             <div className="mt-8 flex flex-wrap justify-center gap-2 max-w-2xl animate-fade-in">
@@ -309,6 +348,10 @@ export default function App() {
                <Video className="w-12 h-12 text-pink-500 mb-4 animate-pulse" />
              ) : mode === 'image' ? (
                <ImageIcon className="w-12 h-12 text-emerald-500 mb-4 animate-pulse" />
+             ) : mode === 'restaurants' ? (
+               <MapPin className="w-12 h-12 text-red-500 mb-4 animate-bounce" />
+             ) : mode === 'search_agent' ? (
+               <Globe className="w-12 h-12 text-blue-500 mb-4 animate-spin-slow" />
              ) : (
                <ChefHat className="w-12 h-12 text-gray-300 mb-4" />
              )}
@@ -317,10 +360,15 @@ export default function App() {
                 {mode === 'thinking' && "Chef Gemini is deeply analyzing the best culinary matches..."}
                 {mode === 'video' && "Generating your delicious video (this may take a moment)..."}
                 {mode === 'image' && `Generating your ${imageSize} food masterpiece...`}
+                {mode === 'restaurants' && "Locating the best restaurants near you..."}
+                {mode === 'search_agent' && "Searching the web for the best answers..."}
                 {mode === 'normal' && "Chef Gemini is looking up the best options..."}
              </p>
              <div className="mt-2 text-xs text-gray-400">
-               {mode === 'video' ? "Powered by Veo" : mode === 'image' ? "Powered by Gemini 3 Pro" : "Powered by Google Search"}
+               {mode === 'video' ? "Powered by Veo" 
+                 : mode === 'image' ? "Powered by Gemini 3 Pro" 
+                 : mode === 'restaurants' ? "Powered by Google Maps"
+                 : "Powered by Google Search"}
              </div>
           </div>
         )}

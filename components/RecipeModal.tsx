@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState, useRef } from 'react';
 import { FoodRecommendation, Recipe, AppMode } from '../types';
 import { getDishRecipe } from '../services/gemini';
@@ -236,7 +237,7 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
           {loading && (
             <div className="flex flex-col items-center justify-center py-12 space-y-4 text-gray-500">
               <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
-              <p>Finding the best recipe for you...</p>
+              <p>Finding the best information for you...</p>
             </div>
           )}
 
@@ -271,7 +272,7 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
                 <div>
                   <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                     <span className="w-2 h-6 bg-yellow-400 rounded-full"></span>
-                    Ingredients
+                    Ingredients / Items
                   </h3>
                   <ul className="space-y-3">
                     {recipe.ingredients.map((ing, i) => (
@@ -288,7 +289,7 @@ export const RecipeModal: React.FC<RecipeModalProps> = ({ item, onClose, mode })
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
                       <span className="w-2 h-6 bg-red-400 rounded-full"></span>
-                      Instructions
+                      Instructions / Details
                     </h3>
                     <button 
                       onClick={toggleCookMode}

@@ -1,35 +1,95 @@
 
-import { GoogleGenAI, Tool } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { GroundingSource, FoodRecommendation, Recipe, AppMode, Attachment } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const extractSources = (groundingChunks: any[]): GroundingSource[] => {
   return groundingChunks
-    .map(chunk => {
+    .flatMap(chunk => {
+      const sources: GroundingSource[] = [];
+      
+      // Handle Web Search Grounding
       if (chunk.web) {
-        return { title: chunk.web.title || "Web Source", uri: chunk.web.uri || "#" };
+        sources.push({ 
+          title: chunk.web.title || "Web Source", 
+          uri: chunk.web.uri || "#" 
+        });
       }
-      return null;
+      
+      // Handle Google Maps Grounding
+      if (chunk.maps) {
+        if (chunk.maps.uri) {
+           sources.push({
+             title: chunk.maps.title || "Google Maps Location",
+             uri: chunk.maps.uri
+           });
+        }
+        // Maps often returns place details in other properties, but uri is the main link
+      }
+      
+      return sources;
     })
-    .filter((s): s is GroundingSource => s !== null);
+    .filter((s): s is GroundingSource => s !== null && s.uri !== "#");
 };
 
-const getModelConfig = (mode: AppMode) => {
+const getCurrentLocation = async (): Promise<{ latitude: number; longitude: number } | undefined> => {
+  if (typeof navigator === 'undefined' || !navigator.geolocation) {
+    return undefined;
+  }
+  
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      (error) => {
+        console.warn("Geolocation access denied or failed:", error);
+        resolve(undefined);
+      },
+      { timeout: 5000 }
+    );
+  });
+};
+
+const getModelConfig = async (mode: AppMode) => {
   let model = "gemini-2.5-flash";
   let config: any = {
-    tools: [{ googleSearch: {} }]
+    tools: [{ googleSearch: {} }] // Default to search
   };
+  let toolConfig: any = undefined;
 
   if (mode === 'fast') {
     model = "gemini-2.5-flash-lite";
   } else if (mode === 'thinking') {
     model = "gemini-3-pro-preview";
     config.thinkingConfig = { thinkingBudget: 32768 };
-    // maxOutputTokens is intentionally omitted for thinking mode
+  } else if (mode === 'restaurants') {
+    // Restaurant Agent uses Maps
+    config.tools = [{ googleMaps: {} }];
+    
+    // Attempt to get location for better results
+    const location = await getCurrentLocation();
+    if (location) {
+      toolConfig = {
+        retrievalConfig: {
+          latLng: {
+            latitude: location.latitude,
+            longitude: location.longitude
+          }
+        }
+      };
+    }
+  } else if (mode === 'search_agent') {
+    // Explicit Search Agent uses Flash with Search (same as default but conceptually distinct)
+    model = "gemini-2.5-flash";
+    config.tools = [{ googleSearch: {} }];
   }
 
-  return { model, config };
+  return { model, config, toolConfig };
 };
 
 export const getFoodRecommendations = async (
@@ -38,23 +98,35 @@ export const getFoodRecommendations = async (
   attachment?: Attachment
 ): Promise<{ recommendations: FoodRecommendation[], rawText: string, allSources: GroundingSource[] }> => {
   
-  const { model, config } = getModelConfig(mode);
+  const { model, config, toolConfig } = await getModelConfig(mode);
 
   let systemInstruction = `
     You are Google Foods, a helpful food recommendation assistant.
     Format your response strictly using the following marker for each item so I can parse it:
     
     ### ITEM_START
-    Name: [Dish Name or Analysis Topic]
-    Description: [Description or Analysis Result]
+    Name: [Dish Name or Restaurant Name or Topic]
+    Description: [Description, Address/Rating (if restaurant), or Analysis Result]
     ### ITEM_END
 
     Do not use markdown lists or bullets inside the Name field. Keep descriptions concise (under 50 words).
   `;
 
-  // Adjust prompt based on attachment type
-  let promptText = `The user is asking: "${query}". Please suggest exactly 3 distinct food dishes or meals that match this request.`;
+  let promptText = "";
   
+  // Custom prompts based on Mode/Agent
+  if (mode === 'restaurants') {
+    promptText = `The user is looking for restaurants matching: "${query}". 
+    Find exactly 3 distinct, highly-rated restaurants nearby (or in the specified location).
+    Include the rating and a brief summary of what they are known for in the description.`;
+  } else if (mode === 'search_agent') {
+    promptText = `Act as an expert Research Agent. The user is asking: "${query}". 
+    Use Google Search to find exactly 3 interesting facts, trending dishes, or specific answers related to this.`;
+  } else {
+    // Standard recommendation prompt
+    promptText = `The user is asking: "${query}". Please suggest exactly 3 distinct food dishes or meals that match this request.`;
+  }
+
   const contents: any[] = [];
 
   if (attachment) {
@@ -94,21 +166,27 @@ export const getFoodRecommendations = async (
       `;
     }
   } else {
-    // No attachment, standard text query
-    promptText += ` Verify recommendations exist using Google Search.`;
+    // No attachment
+    if (mode === 'restaurants') {
+      promptText += ` Verify restaurant details using Google Maps.`;
+    } else {
+      promptText += ` Verify recommendations exist using Google Search.`;
+    }
   }
 
   // Add the text prompt part
   contents.push({ text: promptText });
 
+  const finalConfig: any = { ...config, systemInstruction };
+  if (toolConfig) {
+    finalConfig.toolConfig = toolConfig;
+  }
+
   try {
     const response = await ai.models.generateContent({
       model,
-      contents, // Pass array of parts
-      config: {
-        ...config,
-        systemInstruction
-      }
+      contents,
+      config: finalConfig
     });
 
     const text = response.text || "";
@@ -151,9 +229,10 @@ export const getFoodRecommendations = async (
 };
 
 export const getDishRecipe = async (dishName: string, mode: AppMode = 'normal'): Promise<Recipe> => {
-  // We map 'video' and 'image' mode to 'normal' for recipe retrieval if it happens to be called
-  const effectiveMode = (mode === 'video' || mode === 'image') ? 'normal' : mode;
-  const { model, config } = getModelConfig(effectiveMode);
+  // We map specialized modes to 'normal' for recipe retrieval to ensure we just use standard search for recipes
+  const effectiveMode = (mode === 'video' || mode === 'image' || mode === 'restaurants' || mode === 'search_agent') ? 'normal' : mode;
+  // Note: We await getModelConfig because it's async now, though for 'normal' mode it doesn't do async work usually.
+  const { model, config } = await getModelConfig(effectiveMode);
 
   const prompt = `
     Find a detailed, highly-rated recipe for "${dishName}". 

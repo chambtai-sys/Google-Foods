@@ -20,7 +20,7 @@ export interface Recipe {
   sources: GroundingSource[];
 }
 
-export type AppMode = 'normal' | 'fast' | 'thinking' | 'video' | 'image';
+export type AppMode = 'normal' | 'fast' | 'thinking' | 'video' | 'image' | 'search_agent' | 'restaurants';
 
 export interface Attachment {
   file: File;
