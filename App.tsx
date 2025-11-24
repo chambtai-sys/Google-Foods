@@ -7,7 +7,7 @@ import { SourceList } from './components/SourceList';
 import { RecipeModal } from './components/RecipeModal';
 import { getFoodRecommendations, generateFoodVideo, generateFoodImage } from './services/gemini';
 import { SearchState, FoodRecommendation, AppMode, Attachment } from './types';
-import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video, Image as ImageIcon, Download } from 'lucide-react';
+import { ChefHat, Sparkles, Bolt, Info, BrainCircuit, Video, Image as ImageIcon, Download, Github } from 'lucide-react';
 
 const SUGGESTED_TAGS = [
   "Healthy Lunch", "Spicy Dinner", "Italian", "Vegan", "Comfort Food", "Sushi", "Late Night Snack"
@@ -130,7 +130,15 @@ export default function App() {
     <div className="min-h-screen bg-white flex flex-col font-sans text-gray-900">
       
       <header className="w-full p-4 md:p-6 flex justify-end">
-         {/* Header placeholder */}
+         <a 
+           href="https://github.com/chambtai-sys/Google-Foods"
+           target="_blank"
+           rel="noopener noreferrer"
+           className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-full transition-colors font-medium text-sm"
+         >
+           <Github className="w-5 h-5" />
+           <span>GitHub</span>
+         </a>
       </header>
 
       <main className="flex-grow flex flex-col items-center px-4 pb-12 w-full max-w-6xl mx-auto">
